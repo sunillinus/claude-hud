@@ -1,0 +1,222 @@
+#!/bin/bash
+#
+# claude-hud - Start a Claude Code session with HUD monitoring
+#
+# Usage:
+#   claude-hud <project_path>                     # Add to most recent Claude HUD window
+#   claude-hud --window "Frontend" <project_path> # Add to named window
+#   claude-hud --here <project_path>              # Add to current window (split current pane)
+#   claude-hud --new-window <project_path>        # Create new window
+#
+
+set -e
+
+PROFILE_NAME="Claude HUD"
+STATE_DIR="$HOME/.claude-hud"
+WINDOWS_FILE="$STATE_DIR/windows.json"
+
+# Parse arguments
+WINDOW_NAME=""
+NEW_WINDOW=false
+HERE=false
+PROJECT_PATH=""
+CLAUDE_ARGS=""
+
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --window|-w)
+            WINDOW_NAME="$2"
+            shift 2
+            ;;
+        --new-window|-n)
+            NEW_WINDOW=true
+            shift
+            ;;
+        --here|-h)
+            HERE=true
+            shift
+            ;;
+        --claude-args|-c)
+            CLAUDE_ARGS="$2"
+            shift 2
+            ;;
+        --help)
+            echo "Usage: claude-hud [OPTIONS] <project_path>"
+            echo ""
+            echo "Options:"
+            echo "  --window, -w <name>       Add to named window"
+            echo "  --new-window, -n          Create new window"
+            echo "  --here, -h                Add to current window (split)"
+            echo "  --claude-args, -c <args>  Arguments to pass to claude"
+            echo "  --help                    Show this help"
+            echo ""
+            echo "Examples:"
+            echo "  claude-hud ~/myproject                        # Add to most recent window"
+            echo "  claude-hud --window \"Frontend\" ~/webapp       # Add to named window"
+            echo "  claude-hud --here ~/api                        # Split current pane"
+            echo "  claude-hud --new-window ~/newproject           # Create new window"
+            echo "  claude-hud -c \"--continue\" ~/myproject         # Resume previous session"
+            exit 0
+            ;;
+        *)
+            PROJECT_PATH="$1"
+            shift
+            ;;
+    esac
+done
+
+# Validate project path
+if [ -z "$PROJECT_PATH" ]; then
+    echo "Error: Project path required"
+    echo "Usage: claude-hud [OPTIONS] <project_path>"
+    exit 1
+fi
+
+# Resolve to absolute path
+if [[ "$PROJECT_PATH" != /* ]]; then
+    PROJECT_PATH="$(cd "$PROJECT_PATH" 2>/dev/null && pwd)" || {
+        echo "Error: Cannot access path: $PROJECT_PATH"
+        exit 1
+    }
+fi
+
+PROJECT_NAME="$(basename "$PROJECT_PATH")"
+
+# Ensure state directory exists
+mkdir -p "$STATE_DIR"
+
+# Function to get window ID from name
+get_window_id() {
+    local name="$1"
+    if [ -f "$WINDOWS_FILE" ]; then
+        python3 -c "
+import json
+with open('$WINDOWS_FILE') as f:
+    data = json.load(f)
+for w in data.get('windows', []):
+    if w['name'] == '$name':
+        print(w['iterm_window_id'])
+        break
+" 2>/dev/null
+    fi
+}
+
+# Function to get last used window ID
+get_last_used_window_id() {
+    if [ -f "$WINDOWS_FILE" ]; then
+        python3 -c "
+import json
+with open('$WINDOWS_FILE') as f:
+    data = json.load(f)
+last = data.get('last_used_window')
+if last:
+    for w in data.get('windows', []):
+        if w['name'] == last:
+            print(w['iterm_window_id'])
+            break
+" 2>/dev/null
+    fi
+}
+
+# Determine target window
+if [ "$HERE" = true ]; then
+    # Split current pane
+    osascript <<EOF
+tell application "iTerm2"
+    tell current session of current window
+        set newSession to (split horizontally with profile "$PROFILE_NAME")
+        tell newSession
+            write text "cd '$PROJECT_PATH' && claude $CLAUDE_ARGS"
+            set name to "○ $PROJECT_NAME"
+        end tell
+    end tell
+end tell
+EOF
+    echo "Started Claude HUD session for: $PROJECT_NAME (split in current window)"
+
+elif [ "$NEW_WINDOW" = true ]; then
+    # Create new window
+    osascript <<EOF
+tell application "iTerm2"
+    set newWindow to (create window with profile "$PROFILE_NAME")
+    tell current session of newWindow
+        write text "cd '$PROJECT_PATH' && claude $CLAUDE_ARGS"
+        set name to "○ $PROJECT_NAME"
+    end tell
+end tell
+EOF
+    echo "Started Claude HUD session for: $PROJECT_NAME (new window)"
+
+elif [ -n "$WINDOW_NAME" ]; then
+    # Add to named window
+    WINDOW_ID=$(get_window_id "$WINDOW_NAME")
+
+    if [ -n "$WINDOW_ID" ]; then
+        # Window exists, add a pane to it
+        osascript <<EOF
+tell application "iTerm2"
+    repeat with w in windows
+        if id of w is "$WINDOW_ID" then
+            tell current session of w
+                set newSession to (split horizontally with profile "$PROFILE_NAME")
+                tell newSession
+                    write text "cd '$PROJECT_PATH' && claude $CLAUDE_ARGS"
+                    set name to "○ $PROJECT_NAME"
+                end tell
+            end tell
+            exit repeat
+        end if
+    end repeat
+end tell
+EOF
+        echo "Started Claude HUD session for: $PROJECT_NAME (in window: $WINDOW_NAME)"
+    else
+        # Window doesn't exist, create it
+        osascript <<EOF
+tell application "iTerm2"
+    set newWindow to (create window with profile "$PROFILE_NAME")
+    tell current session of newWindow
+        write text "cd '$PROJECT_PATH' && claude $CLAUDE_ARGS"
+        set name to "○ $PROJECT_NAME"
+    end tell
+end tell
+EOF
+        echo "Started Claude HUD session for: $PROJECT_NAME (new window: $WINDOW_NAME)"
+    fi
+
+else
+    # Add to most recent Claude HUD window or create new
+    WINDOW_ID=$(get_last_used_window_id)
+
+    if [ -n "$WINDOW_ID" ]; then
+        osascript <<EOF
+tell application "iTerm2"
+    repeat with w in windows
+        if id of w is "$WINDOW_ID" then
+            tell current session of w
+                set newSession to (split horizontally with profile "$PROFILE_NAME")
+                tell newSession
+                    write text "cd '$PROJECT_PATH' && claude $CLAUDE_ARGS"
+                    set name to "○ $PROJECT_NAME"
+                end tell
+            end tell
+            exit repeat
+        end if
+    end repeat
+end tell
+EOF
+        echo "Started Claude HUD session for: $PROJECT_NAME (in most recent window)"
+    else
+        # No existing window, create new
+        osascript <<EOF
+tell application "iTerm2"
+    set newWindow to (create window with profile "$PROFILE_NAME")
+    tell current session of newWindow
+        write text "cd '$PROJECT_PATH' && claude $CLAUDE_ARGS"
+        set name to "○ $PROJECT_NAME"
+    end tell
+end tell
+EOF
+        echo "Started Claude HUD session for: $PROJECT_NAME (new window)"
+    fi
+fi

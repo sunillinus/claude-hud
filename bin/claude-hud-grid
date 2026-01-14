@@ -1,0 +1,278 @@
+#!/bin/bash
+#
+# claude-hud-grid - Create a multi-pane layout with Claude Code sessions
+#
+# Usage:
+#   claude-hud-grid <project1> <project2> <project3> ...
+#   claude-hud-grid --name "Frontend" <project1> <project2> ...
+#
+
+set -e
+
+PROFILE_NAME="ClaudeHUD-Idle"
+STATE_DIR="$HOME/.claude-hud"
+WINDOWS_FILE="$STATE_DIR/windows.json"
+
+# Parse arguments
+WINDOW_NAME=""
+PROJECTS=()
+CLAUDE_ARGS=""
+
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --name|-n)
+            WINDOW_NAME="$2"
+            shift 2
+            ;;
+        --claude-args|-c)
+            CLAUDE_ARGS="$2"
+            shift 2
+            ;;
+        --help)
+            echo "Usage: claude-hud-grid [OPTIONS] <project1> <project2> ..."
+            echo ""
+            echo "Options:"
+            echo "  --name, -n <name>         Name for the window"
+            echo "  --claude-args, -c <args>  Arguments to pass to claude"
+            echo "  --help                    Show this help"
+            echo ""
+            echo "Creates a grid layout with Claude Code sessions."
+            echo "Supports 2-6 projects arranged in an optimal grid."
+            echo ""
+            echo "Examples:"
+            echo "  claude-hud-grid ~/proj1 ~/proj2 ~/proj3           # 3-pane grid"
+            echo "  claude-hud-grid --name \"Work\" ~/api ~/web ~/db    # Named grid"
+            echo "  claude-hud-grid -c \"--continue\" ~/p1 ~/p2         # Resume sessions"
+            echo "  claude-hud-grid -n \"Dev\" -c \"--continue\" ~/a ~/b  # Named + resume"
+            exit 0
+            ;;
+        *)
+            PROJECTS+=("$1")
+            shift
+            ;;
+    esac
+done
+
+# Validate projects
+if [ ${#PROJECTS[@]} -lt 1 ]; then
+    echo "Error: At least one project path required"
+    echo "Usage: claude-hud-grid [OPTIONS] <project1> <project2> ..."
+    exit 1
+fi
+
+# Resolve all paths to absolute
+RESOLVED_PROJECTS=()
+PROJECT_NAMES=()
+for p in "${PROJECTS[@]}"; do
+    if [[ "$p" != /* ]]; then
+        resolved="$(cd "$p" 2>/dev/null && pwd)" || {
+            echo "Error: Cannot access path: $p"
+            exit 1
+        }
+    else
+        resolved="$p"
+    fi
+    RESOLVED_PROJECTS+=("$resolved")
+    PROJECT_NAMES+=("$(basename "$resolved")")
+done
+
+NUM_PROJECTS=${#RESOLVED_PROJECTS[@]}
+
+# Ensure state directory exists
+mkdir -p "$STATE_DIR"
+
+# Function to save window info
+save_window_info() {
+    local name="$1"
+    local window_id="$2"
+
+    python3 <<EOF
+import json
+import os
+from datetime import datetime
+
+windows_file = "$WINDOWS_FILE"
+name = "$name"
+window_id = "$window_id"
+
+# Load existing data
+data = {"windows": [], "last_used_window": None}
+if os.path.exists(windows_file):
+    try:
+        with open(windows_file) as f:
+            data = json.load(f)
+    except:
+        pass
+
+# Remove existing window with same name
+data["windows"] = [w for w in data.get("windows", []) if w["name"] != name]
+
+# Add new window
+data["windows"].append({
+    "name": name,
+    "iterm_window_id": window_id,
+    "created_at": datetime.now().isoformat(),
+    "session_count": $NUM_PROJECTS
+})
+data["last_used_window"] = name
+
+# Save
+with open(windows_file, "w") as f:
+    json.dump(data, f, indent=2)
+EOF
+}
+
+# Project color palette (RGB values scaled for AppleScript: value * 257)
+# 0: Navy blue (30, 58, 95)    -> {7710, 14906, 24415}
+# 1: Purple (74, 25, 66)       -> {19018, 6425, 16962}
+# 2: Teal (13, 79, 79)         -> {3341, 20303, 20303}
+# 3: Brown (92, 61, 46)        -> {23644, 15677, 11822}
+# 4: Forest green (45, 74, 62) -> {11565, 19018, 15934}
+# 5: Indigo (74, 63, 92)       -> {19018, 16191, 23644}
+get_project_color() {
+    local index=$1
+    case $index in
+        0) echo "{7710, 14906, 24415}" ;;
+        1) echo "{19018, 6425, 16962}" ;;
+        2) echo "{3341, 20303, 20303}" ;;
+        3) echo "{23644, 15677, 11822}" ;;
+        4) echo "{11565, 19018, 15934}" ;;
+        5) echo "{19018, 16191, 23644}" ;;
+        *) echo "{7710, 14906, 24415}" ;;  # Default to navy
+    esac
+}
+
+# Truncate badge text to 12 characters
+truncate_badge() {
+    local name="$1"
+    if [ ${#name} -gt 12 ]; then
+        echo "${name:0:12}..."
+    else
+        echo "$name"
+    fi
+}
+
+# Generate AppleScript for grid layout
+generate_grid_script() {
+    local projects=("${RESOLVED_PROJECTS[@]}")
+    local names=("${PROJECT_NAMES[@]}")
+    local count=${#projects[@]}
+
+    cat <<HEADER
+tell application "iTerm2"
+    -- Create new window with ClaudeHUD-Idle profile
+    set newWindow to (create window with profile "$PROFILE_NAME")
+    set windowId to id of newWindow
+
+    tell newWindow
+HEADER
+
+    # First session (top-left) - color 0
+    local badge0=$(truncate_badge "${names[0]}")
+    local color0=$(get_project_color 0)
+    echo "        tell current session"
+    echo "            write text \"cd '${projects[0]}' && echo -ne '\\\\033]0;○ ${names[0]}\\\\007' && claude $CLAUDE_ARGS\""
+    echo "            set name to \"○ ${names[0]}\""
+    echo "            set background color to $color0"
+    echo "            set variable named \"user.badge\" to \"$badge0\""
+    echo "        end tell"
+
+    if [ $count -ge 2 ]; then
+        # Split for second session (top-right) - color 1
+        local badge1=$(truncate_badge "${names[1]}")
+        local color1=$(get_project_color 1)
+        echo "        tell current session"
+        echo "            set session2 to (split vertically with profile \"$PROFILE_NAME\")"
+        echo "        end tell"
+        echo "        tell session2"
+        echo "            write text \"cd '${projects[1]}' && echo -ne '\\\\033]0;○ ${names[1]}\\\\007' && claude $CLAUDE_ARGS\""
+        echo "            set name to \"○ ${names[1]}\""
+        echo "            set background color to $color1"
+            echo "            set variable named \"user.badge\" to \"$badge1\""
+        echo "        end tell"
+    fi
+
+    if [ $count -ge 3 ]; then
+        # Split for third session (bottom-left) - color 2
+        local badge2=$(truncate_badge "${names[2]}")
+        local color2=$(get_project_color 2)
+        echo "        tell first session of current tab"
+        echo "            set session3 to (split horizontally with profile \"$PROFILE_NAME\")"
+        echo "        end tell"
+        echo "        tell session3"
+        echo "            write text \"cd '${projects[2]}' && echo -ne '\\\\033]0;○ ${names[2]}\\\\007' && claude $CLAUDE_ARGS\""
+        echo "            set name to \"○ ${names[2]}\""
+        echo "            set background color to $color2"
+            echo "            set variable named \"user.badge\" to \"$badge2\""
+        echo "        end tell"
+    fi
+
+    if [ $count -ge 4 ]; then
+        # Split for fourth session (bottom-right) - color 3
+        local badge3=$(truncate_badge "${names[3]}")
+        local color3=$(get_project_color 3)
+        echo "        tell session2"
+        echo "            set session4 to (split horizontally with profile \"$PROFILE_NAME\")"
+        echo "        end tell"
+        echo "        tell session4"
+        echo "            write text \"cd '${projects[3]}' && echo -ne '\\\\033]0;○ ${names[3]}\\\\007' && claude $CLAUDE_ARGS\""
+        echo "            set name to \"○ ${names[3]}\""
+        echo "            set background color to $color3"
+            echo "            set variable named \"user.badge\" to \"$badge3\""
+        echo "        end tell"
+    fi
+
+    if [ $count -ge 5 ]; then
+        # Fifth session - split one of the bottom panes - color 4
+        local badge4=$(truncate_badge "${names[4]}")
+        local color4=$(get_project_color 4)
+        echo "        tell session3"
+        echo "            set session5 to (split vertically with profile \"$PROFILE_NAME\")"
+        echo "        end tell"
+        echo "        tell session5"
+        echo "            write text \"cd '${projects[4]}' && echo -ne '\\\\033]0;○ ${names[4]}\\\\007' && claude $CLAUDE_ARGS\""
+        echo "            set name to \"○ ${names[4]}\""
+        echo "            set background color to $color4"
+            echo "            set variable named \"user.badge\" to \"$badge4\""
+        echo "        end tell"
+    fi
+
+    if [ $count -ge 6 ]; then
+        # Sixth session - color 5
+        local badge5=$(truncate_badge "${names[5]}")
+        local color5=$(get_project_color 5)
+        echo "        tell session4"
+        echo "            set session6 to (split vertically with profile \"$PROFILE_NAME\")"
+        echo "        end tell"
+        echo "        tell session6"
+        echo "            write text \"cd '${projects[5]}' && echo -ne '\\\\033]0;○ ${names[5]}\\\\007' && claude $CLAUDE_ARGS\""
+        echo "            set name to \"○ ${names[5]}\""
+        echo "            set background color to $color5"
+            echo "            set variable named \"user.badge\" to \"$badge5\""
+        echo "        end tell"
+    fi
+
+    cat <<'FOOTER'
+    end tell
+
+    return windowId
+end tell
+FOOTER
+}
+
+# Run the AppleScript
+SCRIPT=$(generate_grid_script)
+WINDOW_ID=$(osascript -e "$SCRIPT" 2>/dev/null)
+
+# Save window info if named
+if [ -n "$WINDOW_NAME" ]; then
+    save_window_info "$WINDOW_NAME" "$WINDOW_ID"
+    echo "Created Claude HUD grid: $WINDOW_NAME"
+else
+    echo "Created Claude HUD grid (unnamed)"
+fi
+
+echo "Sessions:"
+for name in "${PROJECT_NAMES[@]}"; do
+    echo "  - $name"
+done

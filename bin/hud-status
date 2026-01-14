@@ -1,0 +1,154 @@
+#!/bin/bash
+#
+# hud-status - Show status of all Claude HUD sessions
+#
+# Usage:
+#   hud-status                    # Show all sessions
+#   hud-status --window "Frontend" # Show sessions in specific window
+#   hud-status --json             # Output as JSON
+#
+
+set -e
+
+STATE_DIR="$HOME/.claude-hud"
+STATE_FILE="$STATE_DIR/state.json"
+WINDOWS_FILE="$STATE_DIR/windows.json"
+
+# Parse arguments
+WINDOW_FILTER=""
+JSON_OUTPUT=false
+
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --window|-w)
+            WINDOW_FILTER="$2"
+            shift 2
+            ;;
+        --json|-j)
+            JSON_OUTPUT=true
+            shift
+            ;;
+        --help)
+            echo "Usage: hud-status [OPTIONS]"
+            echo ""
+            echo "Options:"
+            echo "  --window, -w <name>  Filter by window name"
+            echo "  --json, -j           Output as JSON"
+            echo "  --help               Show this help"
+            exit 0
+            ;;
+        *)
+            shift
+            ;;
+    esac
+done
+
+# Check if state file exists
+if [ ! -f "$STATE_FILE" ]; then
+    if [ "$JSON_OUTPUT" = true ]; then
+        echo '{"sessions": [], "windows": {}}'
+    else
+        echo "No active Claude HUD sessions"
+    fi
+    exit 0
+fi
+
+# Process with Python
+python3 <<EOF
+import json
+import sys
+from datetime import datetime
+
+state_file = "$STATE_FILE"
+windows_file = "$WINDOWS_FILE"
+window_filter = "$WINDOW_FILTER" or None
+json_output = $( [ "$JSON_OUTPUT" = true ] && echo "True" || echo "False" )
+
+# Icons for states
+icons = {
+    "working": "\u2699",    # Gear
+    "waiting": "\u23F3",    # Hourglass
+    "done": "\u2713",       # Check
+    "error": "\u2717",      # X
+    "idle": "\u25CB",       # Circle
+}
+
+# Load state
+try:
+    with open(state_file) as f:
+        state_data = json.load(f)
+except:
+    state_data = {"sessions": []}
+
+# Load windows
+windows_data = {"windows": []}
+try:
+    with open(windows_file) as f:
+        windows_data = json.load(f)
+except:
+    pass
+
+# Group sessions by window
+sessions_by_window = {}
+for session in state_data.get("sessions", []):
+    window_name = session.get("window_name") or "Unnamed"
+    if window_filter and window_name != window_filter:
+        continue
+    if window_name not in sessions_by_window:
+        sessions_by_window[window_name] = []
+    sessions_by_window[window_name].append(session)
+
+if json_output:
+    # Output as JSON
+    output = {
+        "windows": {},
+        "total_sessions": sum(len(s) for s in sessions_by_window.values()),
+    }
+
+    for window_name, sessions in sessions_by_window.items():
+        output["windows"][window_name] = {
+            "sessions": [
+                {
+                    "project": s["project_name"],
+                    "state": s["current_state"],
+                    "task": s.get("current_task"),
+                }
+                for s in sessions
+            ]
+        }
+
+    print(json.dumps(output, indent=2))
+else:
+    # Human-readable output
+    if not sessions_by_window:
+        print("No active Claude HUD sessions")
+        sys.exit(0)
+
+    print("Claude HUD Status")
+    print("=" * 40)
+
+    for window_name, sessions in sorted(sessions_by_window.items()):
+        print(f"\nWindow: {window_name}")
+
+        for session in sessions:
+            state = session.get("current_state", "idle")
+            icon = icons.get(state, "?")
+            project = session.get("project_name", "Unknown")
+            task = session.get("current_task")
+
+            task_str = f" - {task}" if task else ""
+            print(f"  {icon} {project}: {state.upper()}{task_str}")
+
+    # Summary
+    total = sum(len(s) for s in sessions_by_window.values())
+    by_state = {}
+    for sessions in sessions_by_window.values():
+        for s in sessions:
+            state = s.get("current_state", "idle")
+            by_state[state] = by_state.get(state, 0) + 1
+
+    print(f"\nTotal: {total} session(s)")
+    if by_state:
+        summary_parts = [f"{count} {state}" for state, count in sorted(by_state.items())]
+        print(f"Summary: {', '.join(summary_parts)}")
+EOF

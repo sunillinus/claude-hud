@@ -3,11 +3,12 @@
 # claude-hud - Start Claude Code sessions with HUD monitoring
 #
 # Usage:
-#   claude-hud <project>                          # Single session in new window
-#   claude-hud <project1> <project2> ...          # Multi-pane grid layout
-#   claude-hud --name "Work" ~/api ~/web          # Named window
-#   claude-hud --here ~/project                   # Split current pane (single only)
-#   claude-hud --continue ~/project               # Resume previous session
+#   hud <project>                          # Single session in new window
+#   hud <project1> <project2> ...          # Multi-pane grid layout
+#   hud 3                                  # Create 3 empty panes (no claude)
+#   hud --name "Work" ~/api ~/web          # Named window
+#   hud --here ~/project                   # Split current pane (single only)
+#   hud --continue ~/project               # Resume previous session
 #
 
 set -e
@@ -38,6 +39,7 @@ while [[ $# -gt 0 ]]; do
             ;;
         --help)
             echo "Usage: hud [OPTIONS] <project> [project2] ..."
+            echo "       hud <number>                        # Create empty panes"
             echo ""
             echo "Options:"
             echo "  --name, -n <name>    Name the window"
@@ -48,6 +50,7 @@ while [[ $# -gt 0 ]]; do
             echo "Examples:"
             echo "  hud ~/myproject                      # Single session"
             echo "  hud ~/api ~/web ~/db                 # 3-pane grid"
+            echo "  hud 4                                # 4 empty panes"
             echo "  hud --name \"Work\" ~/api ~/web        # Named grid"
             echo "  hud --here ~/api                     # Split current pane"
             echo "  hud --continue ~/myproject           # Resume session"
@@ -64,11 +67,152 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
-# Validate projects
+# Ensure state directory exists
+mkdir -p "$STATE_DIR"
+
+# Check if single numeric argument (empty panes mode)
+EMPTY_PANES=0
+if [ ${#PROJECTS[@]} -eq 1 ] && [[ "${PROJECTS[0]}" =~ ^[1-6]$ ]]; then
+    EMPTY_PANES="${PROJECTS[0]}"
+fi
+
+# Validate input
 if [ ${#PROJECTS[@]} -lt 1 ]; then
-    echo "Error: At least one project path required"
+    echo "Error: At least one project path or pane count required"
     echo "Usage: hud [OPTIONS] <project> [project2] ..."
+    echo "       hud <number>  # Create empty panes (1-6)"
     exit 1
+fi
+
+# Project color palette (RGB values scaled for AppleScript: value * 257)
+get_project_color() {
+    local index=$1
+    case $index in
+        0) echo "{7710, 14906, 24415}" ;;   # Navy blue
+        1) echo "{19018, 6425, 16962}" ;;   # Purple
+        2) echo "{3341, 20303, 20303}" ;;   # Teal
+        3) echo "{23644, 15677, 11822}" ;;  # Brown
+        4) echo "{11565, 19018, 15934}" ;;  # Forest green
+        5) echo "{19018, 16191, 23644}" ;;  # Indigo
+        *) echo "{7710, 14906, 24415}" ;;   # Default to navy
+    esac
+}
+
+# Truncate badge text
+truncate_badge() {
+    local name="$1"
+    if [ ${#name} -gt 12 ]; then
+        echo "${name:0:12}..."
+    else
+        echo "$name"
+    fi
+}
+
+#
+# EMPTY PANES MODE - Create grid without running Claude
+#
+run_empty_grid() {
+    local count=$1
+
+    # Generate AppleScript for empty grid layout
+    SCRIPT=$(cat <<HEADER
+tell application "iTerm2"
+    set newWindow to (create window with profile "$PROFILE_NAME")
+    set windowId to id of newWindow
+
+    tell newWindow
+HEADER
+)
+
+    # First session (top-left)
+    local color0=$(get_project_color 0)
+    SCRIPT+="
+        tell current session
+            set background color to $color0
+            set variable named \"user.badge\" to \"Pane 1\"
+        end tell"
+
+    if [ $count -ge 2 ]; then
+        local color1=$(get_project_color 1)
+        SCRIPT+="
+        tell current session
+            set session2 to (split vertically with profile \"$PROFILE_NAME\")
+        end tell
+        tell session2
+            set background color to $color1
+            set variable named \"user.badge\" to \"Pane 2\"
+        end tell"
+    fi
+
+    if [ $count -ge 3 ]; then
+        local color2=$(get_project_color 2)
+        SCRIPT+="
+        tell first session of current tab
+            set session3 to (split horizontally with profile \"$PROFILE_NAME\")
+        end tell
+        tell session3
+            set background color to $color2
+            set variable named \"user.badge\" to \"Pane 3\"
+        end tell"
+    fi
+
+    if [ $count -ge 4 ]; then
+        local color3=$(get_project_color 3)
+        SCRIPT+="
+        tell session2
+            set session4 to (split horizontally with profile \"$PROFILE_NAME\")
+        end tell
+        tell session4
+            set background color to $color3
+            set variable named \"user.badge\" to \"Pane 4\"
+        end tell"
+    fi
+
+    if [ $count -ge 5 ]; then
+        local color4=$(get_project_color 4)
+        SCRIPT+="
+        tell session3
+            set session5 to (split vertically with profile \"$PROFILE_NAME\")
+        end tell
+        tell session5
+            set background color to $color4
+            set variable named \"user.badge\" to \"Pane 5\"
+        end tell"
+    fi
+
+    if [ $count -ge 6 ]; then
+        local color5=$(get_project_color 5)
+        SCRIPT+="
+        tell session4
+            set session6 to (split vertically with profile \"$PROFILE_NAME\")
+        end tell
+        tell session6
+            set background color to $color5
+            set variable named \"user.badge\" to \"Pane 6\"
+        end tell"
+    fi
+
+    SCRIPT+="
+    end tell
+    return windowId
+end tell"
+
+    # Run the AppleScript
+    WINDOW_ID=$(osascript -e "$SCRIPT" 2>/dev/null)
+
+    # Save window info if named
+    if [ -n "$WINDOW_NAME" ]; then
+        save_window_info "$WINDOW_NAME" "$WINDOW_ID"
+        echo "Created $count empty panes (window: $WINDOW_NAME)"
+    else
+        echo "Created $count empty panes"
+    fi
+}
+
+# Handle empty panes mode
+if [ $EMPTY_PANES -gt 0 ]; then
+    run_empty_grid $EMPTY_PANES
+    exit 0
 fi
 
 # Resolve all paths to absolute
@@ -88,9 +232,6 @@ for p in "${PROJECTS[@]}"; do
 done
 
 NUM_PROJECTS=${#RESOLVED_PROJECTS[@]}
-
-# Ensure state directory exists
-mkdir -p "$STATE_DIR"
 
 # --here only works with single project
 if [ "$HERE" = true ] && [ $NUM_PROJECTS -gt 1 ]; then
@@ -137,30 +278,6 @@ data["last_used_window"] = name
 with open(windows_file, "w") as f:
     json.dump(data, f, indent=2)
 EOF
-}
-
-# Project color palette (RGB values scaled for AppleScript: value * 257)
-get_project_color() {
-    local index=$1
-    case $index in
-        0) echo "{7710, 14906, 24415}" ;;   # Navy blue
-        1) echo "{19018, 6425, 16962}" ;;   # Purple
-        2) echo "{3341, 20303, 20303}" ;;   # Teal
-        3) echo "{23644, 15677, 11822}" ;;  # Brown
-        4) echo "{11565, 19018, 15934}" ;;  # Forest green
-        5) echo "{19018, 16191, 23644}" ;;  # Indigo
-        *) echo "{7710, 14906, 24415}" ;;   # Default to navy
-    esac
-}
-
-# Truncate badge text
-truncate_badge() {
-    local name="$1"
-    if [ ${#name} -gt 12 ]; then
-        echo "${name:0:12}..."
-    else
-        echo "$name"
-    fi
 }
 
 #

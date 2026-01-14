@@ -47,6 +47,13 @@ hud ~/myproject
 hud ~/api ~/web ~/db
 ```
 
+### Empty panes (create grid without running Claude)
+
+```bash
+hud 4                    # Creates 4 empty panes
+hud --name "Work" 3      # Named window with 3 empty panes
+```
+
 ### Named window
 
 ```bash
@@ -69,6 +76,7 @@ hud --continue ~/myproject
 
 ```
 Usage: hud [OPTIONS] <project> [project2] ...
+       hud <number>                        # Create empty panes (1-6)
 
 Options:
   --name, -n <name>    Name the window

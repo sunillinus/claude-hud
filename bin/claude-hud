@@ -37,7 +37,7 @@ while [[ $# -gt 0 ]]; do
             shift
             ;;
         --help)
-            echo "Usage: claude-hud [OPTIONS] <project> [project2] ..."
+            echo "Usage: hud [OPTIONS] <project> [project2] ..."
             echo ""
             echo "Options:"
             echo "  --name, -n <name>    Name the window"
@@ -46,11 +46,11 @@ while [[ $# -gt 0 ]]; do
             echo "  --help               Show this help"
             echo ""
             echo "Examples:"
-            echo "  claude-hud ~/myproject                      # Single session"
-            echo "  claude-hud ~/api ~/web ~/db                 # 3-pane grid"
-            echo "  claude-hud --name \"Work\" ~/api ~/web        # Named grid"
-            echo "  claude-hud --here ~/api                     # Split current pane"
-            echo "  claude-hud --continue ~/myproject           # Resume session"
+            echo "  hud ~/myproject                      # Single session"
+            echo "  hud ~/api ~/web ~/db                 # 3-pane grid"
+            echo "  hud --name \"Work\" ~/api ~/web        # Named grid"
+            echo "  hud --here ~/api                     # Split current pane"
+            echo "  hud --continue ~/myproject           # Resume session"
             exit 0
             ;;
         -*)
@@ -67,7 +67,7 @@ done
 # Validate projects
 if [ ${#PROJECTS[@]} -lt 1 ]; then
     echo "Error: At least one project path required"
-    echo "Usage: claude-hud [OPTIONS] <project> [project2] ..."
+    echo "Usage: hud [OPTIONS] <project> [project2] ..."
     exit 1
 fi
 

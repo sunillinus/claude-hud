@@ -7,7 +7,7 @@ A heads-up display for monitoring multiple Claude Code sessions in iTerm2.
 - **Visual status indicators**: Background turns dark red when a session needs input
 - **Project colors**: Each session gets a unique background color for easy identification
 - **Multi-pane grid**: Run 2-6 Claude Code sessions in a grid layout
-- **Single unified command**: `claude-hud` handles both single sessions and grids
+- **Simple command**: Just `hud` to start sessions
 
 ## Installation
 
@@ -38,37 +38,37 @@ cd claude-hud
 ### Single session
 
 ```bash
-claude-hud ~/myproject
+hud ~/myproject
 ```
 
 ### Multi-pane grid (auto-detects when given multiple paths)
 
 ```bash
-claude-hud ~/api ~/web ~/db
+hud ~/api ~/web ~/db
 ```
 
 ### Named window
 
 ```bash
-claude-hud --name "Work" ~/api ~/web ~/db
+hud --name "Work" ~/api ~/web ~/db
 ```
 
 ### Split current pane
 
 ```bash
-claude-hud --here ~/project
+hud --here ~/project
 ```
 
 ### Resume previous session
 
 ```bash
-claude-hud --continue ~/myproject
+hud --continue ~/myproject
 ```
 
 ### All options
 
 ```
-Usage: claude-hud [OPTIONS] <project> [project2] ...
+Usage: hud [OPTIONS] <project> [project2] ...
 
 Options:
   --name, -n <name>    Name the window

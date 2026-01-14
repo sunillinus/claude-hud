@@ -5,7 +5,7 @@
 # Installs Claude HUD components:
 # - Dynamic Profile for iTerm2
 # - Python daemon for session monitoring
-# - CLI tools (claude-hud, claude-hud-grid, hud-status)
+# - CLI tools (claude-hud, hud-status)
 #
 
 set -e
@@ -92,7 +92,6 @@ echo -e "  ${GREEN}✓${NC} Python daemon installed"
 echo -e "${YELLOW}Installing CLI tools...${NC}"
 cp "$SCRIPT_DIR/bin/"* "$BIN_DIR/"
 chmod +x "$BIN_DIR/claude-hud"
-chmod +x "$BIN_DIR/claude-hud-grid"
 chmod +x "$BIN_DIR/hud-status"
 echo -e "  ${GREEN}✓${NC} CLI tools installed"
 
@@ -214,13 +213,16 @@ echo "2. Restart iTerm2 to activate the daemon"
 echo ""
 echo -e "${YELLOW}Quick start:${NC}"
 echo ""
-echo "  # Create a multi-pane grid"
-echo "  claude-hud-grid --name \"MyProject\" ~/project1 ~/project2 ~/project3"
+echo "  # Single project session"
+echo "  claude-hud ~/myproject"
 echo ""
-echo "  # Add a session to existing window"
-echo "  claude-hud --window \"MyProject\" ~/project4"
+echo "  # Multi-pane grid (auto-detects)"
+echo "  claude-hud ~/api ~/web ~/db"
+echo ""
+echo "  # Named window"
+echo "  claude-hud --name \"Work\" ~/api ~/web"
 echo ""
 echo "  # Check status"
 echo "  hud-status"
 echo ""
-echo "For more info, see: https://github.com/your-username/claude-hud"
+echo "For more info, see: https://github.com/sunillinus/claude-hud"

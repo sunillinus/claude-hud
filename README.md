@@ -2,32 +2,17 @@
 
 A heads-up display for monitoring multiple Claude Code sessions in iTerm2.
 
-```
-Window "Frontend"                    Window "Backend"
-+-------------+-------------+       +-------------+-------------+
-| [WORKING]   | [WAITING]   |       | [WORKING]   | [DONE]      |
-| app-ui      | admin       |       | api         | workers     |
-| Blue        | Amber       |       | Blue        | Green       |
-+-------------+-------------+       +-------------+-------------+
-```
-
 ## Features
 
-- **Single window, multiple sessions**: Run 2-6 Claude Code sessions in a grid layout
-- **Visual status indicators**: Color-coded backgrounds show state at a glance
-  - Blue: Working
-  - Amber: Waiting for input
-  - Green: Done
-  - Red: Error
-  - Gray: Idle
-- **Notifications**: Get alerted when any session needs input
-- **Named windows**: Organize sessions by project or topic
-- **CLI tools**: Easy commands for managing sessions
+- **Visual status indicators**: Background turns dark red when a session needs input
+- **Project colors**: Each session gets a unique background color for easy identification
+- **Multi-pane grid**: Run 2-6 Claude Code sessions in a grid layout
+- **Single unified command**: `claude-hud` handles both single sessions and grids
 
 ## Installation
 
 ```bash
-git clone https://github.com/your-username/claude-hud.git
+git clone https://github.com/sunillinus/claude-hud.git
 cd claude-hud
 ./install.sh
 ```
@@ -50,27 +35,58 @@ cd claude-hud
 
 ## Usage
 
-### Create a multi-pane grid
+### Single session
 
 ```bash
-# Create a named window with multiple sessions
-claude-hud-grid --name "Frontend" ~/projects/app-ui ~/projects/admin ~/projects/website
-
-# Create another window for backend work
-claude-hud-grid --name "Backend" ~/projects/api ~/projects/workers
+claude-hud ~/myproject
 ```
 
-### Add sessions to existing windows
+### Multi-pane grid (auto-detects when given multiple paths)
 
 ```bash
-# Add to a specific named window
-claude-hud --window "Frontend" ~/projects/mobile
+claude-hud ~/api ~/web ~/db
+```
 
-# Add to current window (split current pane)
-claude-hud --here ~/projects/new-app
+### Named window
 
-# Create a new window
-claude-hud --new-window ~/projects/standalone
+```bash
+claude-hud --name "Work" ~/api ~/web ~/db
+```
+
+### Split current pane
+
+```bash
+claude-hud --here ~/project
+```
+
+### Resume previous session
+
+```bash
+claude-hud --continue ~/myproject
+```
+
+### All options
+
+```
+Usage: claude-hud [OPTIONS] <project> [project2] ...
+
+Options:
+  --name, -n <name>    Name the window
+  --here, -h           Split current pane (single project only)
+  --continue, -c       Resume previous Claude session
+  --help               Show this help
+```
+
+### Check status
+
+```bash
+hud-status
+
+# Filter by window
+hud-status --window "Work"
+
+# Output as JSON
+hud-status --json
 ```
 
 ### Remove sessions
@@ -81,44 +97,20 @@ Just close the pane normally:
 
 The daemon auto-detects closed sessions and stops tracking them.
 
-### Check status
-
-```bash
-hud-status
-
-# Output:
-# Window: Frontend
-#   [WORKING] app-ui
-#   [WAITING] admin
-#   [DONE] website
-# Window: Backend
-#   [WORKING] api
-#   [IDLE] workers
-```
-
-```bash
-# Filter by window
-hud-status --window "Frontend"
-
-# Output as JSON
-hud-status --json
-```
-
 ## Keyboard Shortcuts
 
 | Shortcut | Action |
 |----------|--------|
-| `Cmd+D` | Split vertically (then run `claude` manually) |
+| `Cmd+D` | Split vertically |
 | `Cmd+Shift+D` | Split horizontally |
 | `Cmd+W` | Close current pane |
 | `Cmd+[` / `Cmd+]` | Switch between panes |
 
 ## How It Works
 
-1. **State Detection**: Monitors `~/.claude/debug/` logs to detect Claude Code session states
-2. **Visual Feedback**: Uses iTerm2's Python API to update pane colors, titles, and badges
-3. **Triggers**: iTerm2 triggers provide instant pattern matching for common states
-4. **Notifications**: macOS notifications alert you when sessions need input
+1. **State Detection**: Claude Code hooks report session state changes
+2. **Visual Feedback**: Background turns dark red when session needs input, restores to project color otherwise
+3. **Project Colors**: Each session in a grid gets a unique background color (navy, purple, teal, brown, forest, indigo)
 
 ## File Locations
 
@@ -152,15 +144,6 @@ The daemon polls every 0.5 seconds. If colors don't update:
 1. Check that the daemon is running (Scripts > claude_hud_daemon.py)
 2. Verify the Dynamic Profile is installed
 
-### Notifications not appearing
-
-1. Check macOS notification settings for iTerm2
-2. Ensure "Do Not Disturb" is not enabled
-
-## Contributing
-
-Contributions welcome! Please open an issue or pull request.
-
 ## License
 
-MIT License - see LICENSE file for details.
+MIT License

@@ -1,222 +1,349 @@
 #!/bin/bash
 #
-# claude-hud - Start a Claude Code session with HUD monitoring
+# claude-hud - Start Claude Code sessions with HUD monitoring
 #
 # Usage:
-#   claude-hud <project_path>                     # Add to most recent Claude HUD window
-#   claude-hud --window "Frontend" <project_path> # Add to named window
-#   claude-hud --here <project_path>              # Add to current window (split current pane)
-#   claude-hud --new-window <project_path>        # Create new window
+#   claude-hud <project>                          # Single session in new window
+#   claude-hud <project1> <project2> ...          # Multi-pane grid layout
+#   claude-hud --name "Work" ~/api ~/web          # Named window
+#   claude-hud --here ~/project                   # Split current pane (single only)
+#   claude-hud --continue ~/project               # Resume previous session
 #
 
 set -e
 
-PROFILE_NAME="Claude HUD"
+PROFILE_NAME="ClaudeHUD-Idle"
 STATE_DIR="$HOME/.claude-hud"
 WINDOWS_FILE="$STATE_DIR/windows.json"
 
 # Parse arguments
 WINDOW_NAME=""
-NEW_WINDOW=false
 HERE=false
-PROJECT_PATH=""
+PROJECTS=()
 CLAUDE_ARGS=""
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
-        --window|-w)
+        --name|-n)
             WINDOW_NAME="$2"
             shift 2
-            ;;
-        --new-window|-n)
-            NEW_WINDOW=true
-            shift
             ;;
         --here|-h)
             HERE=true
             shift
             ;;
-        --claude-args|-c)
-            CLAUDE_ARGS="$2"
-            shift 2
+        --continue|-c)
+            CLAUDE_ARGS="--continue"
+            shift
             ;;
         --help)
-            echo "Usage: claude-hud [OPTIONS] <project_path>"
+            echo "Usage: claude-hud [OPTIONS] <project> [project2] ..."
             echo ""
             echo "Options:"
-            echo "  --window, -w <name>       Add to named window"
-            echo "  --new-window, -n          Create new window"
-            echo "  --here, -h                Add to current window (split)"
-            echo "  --claude-args, -c <args>  Arguments to pass to claude"
-            echo "  --help                    Show this help"
+            echo "  --name, -n <name>    Name the window"
+            echo "  --here, -h           Split current pane (single project only)"
+            echo "  --continue, -c       Resume previous Claude session"
+            echo "  --help               Show this help"
             echo ""
             echo "Examples:"
-            echo "  claude-hud ~/myproject                        # Add to most recent window"
-            echo "  claude-hud --window \"Frontend\" ~/webapp       # Add to named window"
-            echo "  claude-hud --here ~/api                        # Split current pane"
-            echo "  claude-hud --new-window ~/newproject           # Create new window"
-            echo "  claude-hud -c \"--continue\" ~/myproject         # Resume previous session"
+            echo "  claude-hud ~/myproject                      # Single session"
+            echo "  claude-hud ~/api ~/web ~/db                 # 3-pane grid"
+            echo "  claude-hud --name \"Work\" ~/api ~/web        # Named grid"
+            echo "  claude-hud --here ~/api                     # Split current pane"
+            echo "  claude-hud --continue ~/myproject           # Resume session"
             exit 0
             ;;
+        -*)
+            echo "Unknown option: $1"
+            exit 1
+            ;;
         *)
-            PROJECT_PATH="$1"
+            PROJECTS+=("$1")
             shift
             ;;
     esac
 done
 
-# Validate project path
-if [ -z "$PROJECT_PATH" ]; then
-    echo "Error: Project path required"
-    echo "Usage: claude-hud [OPTIONS] <project_path>"
+# Validate projects
+if [ ${#PROJECTS[@]} -lt 1 ]; then
+    echo "Error: At least one project path required"
+    echo "Usage: claude-hud [OPTIONS] <project> [project2] ..."
     exit 1
 fi
 
-# Resolve to absolute path
-if [[ "$PROJECT_PATH" != /* ]]; then
-    PROJECT_PATH="$(cd "$PROJECT_PATH" 2>/dev/null && pwd)" || {
-        echo "Error: Cannot access path: $PROJECT_PATH"
-        exit 1
-    }
-fi
+# Resolve all paths to absolute
+RESOLVED_PROJECTS=()
+PROJECT_NAMES=()
+for p in "${PROJECTS[@]}"; do
+    if [[ "$p" != /* ]]; then
+        resolved="$(cd "$p" 2>/dev/null && pwd)" || {
+            echo "Error: Cannot access path: $p"
+            exit 1
+        }
+    else
+        resolved="$p"
+    fi
+    RESOLVED_PROJECTS+=("$resolved")
+    PROJECT_NAMES+=("$(basename "$resolved")")
+done
 
-PROJECT_NAME="$(basename "$PROJECT_PATH")"
+NUM_PROJECTS=${#RESOLVED_PROJECTS[@]}
 
 # Ensure state directory exists
 mkdir -p "$STATE_DIR"
 
-# Function to get window ID from name
-get_window_id() {
+# --here only works with single project
+if [ "$HERE" = true ] && [ $NUM_PROJECTS -gt 1 ]; then
+    echo "Error: --here only works with a single project"
+    exit 1
+fi
+
+# Function to save window info
+save_window_info() {
     local name="$1"
-    if [ -f "$WINDOWS_FILE" ]; then
-        python3 -c "
+    local window_id="$2"
+
+    python3 <<EOF
 import json
-with open('$WINDOWS_FILE') as f:
-    data = json.load(f)
-for w in data.get('windows', []):
-    if w['name'] == '$name':
-        print(w['iterm_window_id'])
-        break
-" 2>/dev/null
+import os
+from datetime import datetime
+
+windows_file = "$WINDOWS_FILE"
+name = "$name"
+window_id = "$window_id"
+
+# Load existing data
+data = {"windows": [], "last_used_window": None}
+if os.path.exists(windows_file):
+    try:
+        with open(windows_file) as f:
+            data = json.load(f)
+    except:
+        pass
+
+# Remove existing window with same name
+data["windows"] = [w for w in data.get("windows", []) if w["name"] != name]
+
+# Add new window
+data["windows"].append({
+    "name": name,
+    "iterm_window_id": window_id,
+    "created_at": datetime.now().isoformat(),
+    "session_count": $NUM_PROJECTS
+})
+data["last_used_window"] = name
+
+# Save
+with open(windows_file, "w") as f:
+    json.dump(data, f, indent=2)
+EOF
+}
+
+# Project color palette (RGB values scaled for AppleScript: value * 257)
+get_project_color() {
+    local index=$1
+    case $index in
+        0) echo "{7710, 14906, 24415}" ;;   # Navy blue
+        1) echo "{19018, 6425, 16962}" ;;   # Purple
+        2) echo "{3341, 20303, 20303}" ;;   # Teal
+        3) echo "{23644, 15677, 11822}" ;;  # Brown
+        4) echo "{11565, 19018, 15934}" ;;  # Forest green
+        5) echo "{19018, 16191, 23644}" ;;  # Indigo
+        *) echo "{7710, 14906, 24415}" ;;   # Default to navy
+    esac
+}
+
+# Truncate badge text
+truncate_badge() {
+    local name="$1"
+    if [ ${#name} -gt 12 ]; then
+        echo "${name:0:12}..."
+    else
+        echo "$name"
     fi
 }
 
-# Function to get last used window ID
-get_last_used_window_id() {
-    if [ -f "$WINDOWS_FILE" ]; then
-        python3 -c "
-import json
-with open('$WINDOWS_FILE') as f:
-    data = json.load(f)
-last = data.get('last_used_window')
-if last:
-    for w in data.get('windows', []):
-        if w['name'] == last:
-            print(w['iterm_window_id'])
-            break
-" 2>/dev/null
-    fi
-}
+#
+# SINGLE PROJECT MODE
+#
+run_single_session() {
+    local project="${RESOLVED_PROJECTS[0]}"
+    local name="${PROJECT_NAMES[0]}"
+    local badge=$(truncate_badge "$name")
+    local color=$(get_project_color 0)
 
-# Determine target window
-if [ "$HERE" = true ]; then
-    # Split current pane
-    osascript <<EOF
+    if [ "$HERE" = true ]; then
+        # Split current pane
+        osascript <<EOF
 tell application "iTerm2"
     tell current session of current window
         set newSession to (split horizontally with profile "$PROFILE_NAME")
         tell newSession
-            write text "cd '$PROJECT_PATH' && claude $CLAUDE_ARGS"
-            set name to "○ $PROJECT_NAME"
+            write text "cd '$project' && echo -ne '\\033]0;○ $name\\007' && claude $CLAUDE_ARGS"
+            set name to "○ $name"
+            set background color to $color
+            set variable named "user.badge" to "$badge"
         end tell
     end tell
 end tell
 EOF
-    echo "Started Claude HUD session for: $PROJECT_NAME (split in current window)"
-
-elif [ "$NEW_WINDOW" = true ]; then
-    # Create new window
-    osascript <<EOF
-tell application "iTerm2"
-    set newWindow to (create window with profile "$PROFILE_NAME")
-    tell current session of newWindow
-        write text "cd '$PROJECT_PATH' && claude $CLAUDE_ARGS"
-        set name to "○ $PROJECT_NAME"
-    end tell
-end tell
-EOF
-    echo "Started Claude HUD session for: $PROJECT_NAME (new window)"
-
-elif [ -n "$WINDOW_NAME" ]; then
-    # Add to named window
-    WINDOW_ID=$(get_window_id "$WINDOW_NAME")
-
-    if [ -n "$WINDOW_ID" ]; then
-        # Window exists, add a pane to it
-        osascript <<EOF
-tell application "iTerm2"
-    repeat with w in windows
-        if id of w is "$WINDOW_ID" then
-            tell current session of w
-                set newSession to (split horizontally with profile "$PROFILE_NAME")
-                tell newSession
-                    write text "cd '$PROJECT_PATH' && claude $CLAUDE_ARGS"
-                    set name to "○ $PROJECT_NAME"
-                end tell
-            end tell
-            exit repeat
-        end if
-    end repeat
-end tell
-EOF
-        echo "Started Claude HUD session for: $PROJECT_NAME (in window: $WINDOW_NAME)"
+        echo "Started Claude HUD: $name (split in current window)"
     else
-        # Window doesn't exist, create it
-        osascript <<EOF
+        # Create new window
+        WINDOW_ID=$(osascript <<EOF
 tell application "iTerm2"
     set newWindow to (create window with profile "$PROFILE_NAME")
+    set windowId to id of newWindow
     tell current session of newWindow
-        write text "cd '$PROJECT_PATH' && claude $CLAUDE_ARGS"
-        set name to "○ $PROJECT_NAME"
+        write text "cd '$project' && echo -ne '\\033]0;○ $name\\007' && claude $CLAUDE_ARGS"
+        set name to "○ $name"
+        set background color to $color
+        set variable named "user.badge" to "$badge"
     end tell
+    return windowId
 end tell
 EOF
-        echo "Started Claude HUD session for: $PROJECT_NAME (new window: $WINDOW_NAME)"
+)
+        if [ -n "$WINDOW_NAME" ]; then
+            save_window_info "$WINDOW_NAME" "$WINDOW_ID"
+            echo "Started Claude HUD: $name (window: $WINDOW_NAME)"
+        else
+            echo "Started Claude HUD: $name"
+        fi
+    fi
+}
+
+#
+# MULTI-PROJECT GRID MODE
+#
+run_grid() {
+    local projects=("${RESOLVED_PROJECTS[@]}")
+    local names=("${PROJECT_NAMES[@]}")
+    local count=${#projects[@]}
+
+    # Generate AppleScript for grid layout
+    SCRIPT=$(cat <<HEADER
+tell application "iTerm2"
+    set newWindow to (create window with profile "$PROFILE_NAME")
+    set windowId to id of newWindow
+
+    tell newWindow
+HEADER
+)
+
+    # First session (top-left)
+    local badge0=$(truncate_badge "${names[0]}")
+    local color0=$(get_project_color 0)
+    SCRIPT+="
+        tell current session
+            write text \"cd '${projects[0]}' && echo -ne '\\\\033]0;○ ${names[0]}\\\\007' && claude $CLAUDE_ARGS\"
+            set name to \"○ ${names[0]}\"
+            set background color to $color0
+            set variable named \"user.badge\" to \"$badge0\"
+        end tell"
+
+    if [ $count -ge 2 ]; then
+        local badge1=$(truncate_badge "${names[1]}")
+        local color1=$(get_project_color 1)
+        SCRIPT+="
+        tell current session
+            set session2 to (split vertically with profile \"$PROFILE_NAME\")
+        end tell
+        tell session2
+            write text \"cd '${projects[1]}' && echo -ne '\\\\033]0;○ ${names[1]}\\\\007' && claude $CLAUDE_ARGS\"
+            set name to \"○ ${names[1]}\"
+            set background color to $color1
+            set variable named \"user.badge\" to \"$badge1\"
+        end tell"
     fi
 
+    if [ $count -ge 3 ]; then
+        local badge2=$(truncate_badge "${names[2]}")
+        local color2=$(get_project_color 2)
+        SCRIPT+="
+        tell first session of current tab
+            set session3 to (split horizontally with profile \"$PROFILE_NAME\")
+        end tell
+        tell session3
+            write text \"cd '${projects[2]}' && echo -ne '\\\\033]0;○ ${names[2]}\\\\007' && claude $CLAUDE_ARGS\"
+            set name to \"○ ${names[2]}\"
+            set background color to $color2
+            set variable named \"user.badge\" to \"$badge2\"
+        end tell"
+    fi
+
+    if [ $count -ge 4 ]; then
+        local badge3=$(truncate_badge "${names[3]}")
+        local color3=$(get_project_color 3)
+        SCRIPT+="
+        tell session2
+            set session4 to (split horizontally with profile \"$PROFILE_NAME\")
+        end tell
+        tell session4
+            write text \"cd '${projects[3]}' && echo -ne '\\\\033]0;○ ${names[3]}\\\\007' && claude $CLAUDE_ARGS\"
+            set name to \"○ ${names[3]}\"
+            set background color to $color3
+            set variable named \"user.badge\" to \"$badge3\"
+        end tell"
+    fi
+
+    if [ $count -ge 5 ]; then
+        local badge4=$(truncate_badge "${names[4]}")
+        local color4=$(get_project_color 4)
+        SCRIPT+="
+        tell session3
+            set session5 to (split vertically with profile \"$PROFILE_NAME\")
+        end tell
+        tell session5
+            write text \"cd '${projects[4]}' && echo -ne '\\\\033]0;○ ${names[4]}\\\\007' && claude $CLAUDE_ARGS\"
+            set name to \"○ ${names[4]}\"
+            set background color to $color4
+            set variable named \"user.badge\" to \"$badge4\"
+        end tell"
+    fi
+
+    if [ $count -ge 6 ]; then
+        local badge5=$(truncate_badge "${names[5]}")
+        local color5=$(get_project_color 5)
+        SCRIPT+="
+        tell session4
+            set session6 to (split vertically with profile \"$PROFILE_NAME\")
+        end tell
+        tell session6
+            write text \"cd '${projects[5]}' && echo -ne '\\\\033]0;○ ${names[5]}\\\\007' && claude $CLAUDE_ARGS\"
+            set name to \"○ ${names[5]}\"
+            set background color to $color5
+            set variable named \"user.badge\" to \"$badge5\"
+        end tell"
+    fi
+
+    SCRIPT+="
+    end tell
+    return windowId
+end tell"
+
+    # Run the AppleScript
+    WINDOW_ID=$(osascript -e "$SCRIPT" 2>/dev/null)
+
+    # Save window info if named
+    if [ -n "$WINDOW_NAME" ]; then
+        save_window_info "$WINDOW_NAME" "$WINDOW_ID"
+        echo "Created Claude HUD grid: $WINDOW_NAME"
+    else
+        echo "Created Claude HUD grid"
+    fi
+
+    echo "Sessions:"
+    for name in "${PROJECT_NAMES[@]}"; do
+        echo "  - $name"
+    done
+}
+
+#
+# MAIN
+#
+if [ $NUM_PROJECTS -eq 1 ]; then
+    run_single_session
 else
-    # Add to most recent Claude HUD window or create new
-    WINDOW_ID=$(get_last_used_window_id)
-
-    if [ -n "$WINDOW_ID" ]; then
-        osascript <<EOF
-tell application "iTerm2"
-    repeat with w in windows
-        if id of w is "$WINDOW_ID" then
-            tell current session of w
-                set newSession to (split horizontally with profile "$PROFILE_NAME")
-                tell newSession
-                    write text "cd '$PROJECT_PATH' && claude $CLAUDE_ARGS"
-                    set name to "○ $PROJECT_NAME"
-                end tell
-            end tell
-            exit repeat
-        end if
-    end repeat
-end tell
-EOF
-        echo "Started Claude HUD session for: $PROJECT_NAME (in most recent window)"
-    else
-        # No existing window, create new
-        osascript <<EOF
-tell application "iTerm2"
-    set newWindow to (create window with profile "$PROFILE_NAME")
-    tell current session of newWindow
-        write text "cd '$PROJECT_PATH' && claude $CLAUDE_ARGS"
-        set name to "○ $PROJECT_NAME"
-    end tell
-end tell
-EOF
-        echo "Started Claude HUD session for: $PROJECT_NAME (new window)"
-    fi
+    run_grid
 fi

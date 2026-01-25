@@ -6,7 +6,7 @@ A heads-up display for monitoring multiple Claude Code sessions in iTerm2.
 
 - **Visual status indicators**: Background turns dark red when a session needs input
 - **Project colors**: Each session gets a unique background color for easy identification
-- **Multi-pane grid**: Run 2-6 Claude Code sessions in a grid layout
+- **Multi-pane grid**: Run 2-8 Claude Code sessions in a grid layout
 - **Simple command**: Just `hud` to start sessions
 
 ## Installation
@@ -51,38 +51,30 @@ hud ~/api ~/web ~/db
 
 ```bash
 hud 4                    # Creates 4 empty panes
-hud --name "Work" 3      # Named window with 3 empty panes
+hud 8                    # Creates 8 empty panes (max)
 ```
 
-### Named window
+### Pass arguments to claude
+
+Use `--` to pass any arguments directly to claude:
 
 ```bash
-hud --name "Work" ~/api ~/web ~/db
-```
-
-### Split current pane
-
-```bash
-hud --here ~/project
-```
-
-### Resume previous session
-
-```bash
-hud --continue ~/myproject
+hud ~/project -- -c                  # Continue previous session
+hud ~/project -- --model opus        # Use opus model
+hud ~/project -- -r                  # Open resume picker
+hud ~/project -- --model sonnet -c   # Continue with sonnet
 ```
 
 ### All options
 
 ```
-Usage: hud [OPTIONS] <project> [project2] ...
-       hud <number>                        # Create empty panes (1-6)
+Usage: hud <project> [project2] ... [-- CLAUDE_ARGS]
+       hud <number>                        # Create empty panes (1-8)
 
 Options:
-  --name, -n <name>    Name the window
-  --here, -h           Split current pane (single project only)
-  --continue, -c       Resume previous Claude session
-  --help               Show this help
+  --mono, -m           Use monochrome color scheme
+  --                   Pass remaining args to claude
+  --help, -h           Show this help
 ```
 
 ### Check status
@@ -118,7 +110,21 @@ The daemon auto-detects closed sessions and stops tracking them.
 
 1. **State Detection**: Claude Code hooks report session state changes
 2. **Visual Feedback**: Background turns dark red when session needs input, restores to project color otherwise
-3. **Project Colors**: Each session in a grid gets a unique background color (navy, purple, teal, brown, forest, indigo)
+3. **Project Colors**: Each session in a grid gets a unique background color (navy, purple, teal, brown, forest, indigo, burgundy, steel blue)
+
+## Grid Layout
+
+The grid arranges panes as follows:
+
+| Panes | Layout |
+|-------|--------|
+| 2 | `[1][2]` - 2 columns |
+| 3 | `[1][2][3]` - 3 columns |
+| 4 | `[1][2][3]` / `[4]` |
+| 5 | `[1][2][3]` / `[4][5]` |
+| 6 | `[1][2][3]` / `[4][5][6]` - 3x2 grid |
+| 7 | `[1][2][3][7]` / `[4][5][6]` - 4th column full height |
+| 8 | `[1][2][3][7]` / `[4][5][6][8]` - 4x2 grid |
 
 ## File Locations
 

@@ -3,7 +3,7 @@
 Claude HUD - Session Manager
 
 Tracks multiple Claude Code sessions across iTerm2 windows and panes.
-Manages session state, notifications, and provides aggregated status.
+Manages session state and provides aggregated status.
 """
 
 import sys
@@ -11,12 +11,11 @@ sys.dont_write_bytecode = True
 
 import json
 from pathlib import Path
-from dataclasses import dataclass, field, asdict
-from datetime import datetime, timedelta
+from dataclasses import dataclass, field
+from datetime import datetime
 from typing import Dict, List, Optional
-from enum import Enum
 
-from state_detector import ClaudeState, ClaudeStateDetector, StateInfo
+from state_detector import ClaudeState
 
 
 @dataclass
@@ -77,17 +76,13 @@ class SessionManager:
     - Track/untrack sessions
     - Update session states
     - Get aggregated status
-    - Determine which sessions need notifications
     """
 
     STATE_FILE = Path.home() / ".claude-hud" / "state.json"
-    NOTIFICATION_COOLDOWN = timedelta(seconds=30)
-    NOTIFICATION_REMINDER = timedelta(minutes=5)
 
     def __init__(self):
         """Initialize the session manager."""
         self.sessions: Dict[str, TrackedSession] = {}
-        self._detectors: Dict[str, ClaudeStateDetector] = {}
         self._load_state()
 
     def _ensure_state_dir(self) -> None:
@@ -129,13 +124,13 @@ class SessionManager:
             return 0
         # Find the highest color_index currently in use and wrap around
         used_indices = {s.color_index for s in self.sessions.values()}
-        # Try to find an unused index first (up to palette size of 6)
-        for i in range(6):
+        # Try to find an unused index first (up to palette size of 8)
+        for i in range(8):
             if i not in used_indices:
                 return i
         # All indices used, just use next in sequence
         max_index = max(s.color_index for s in self.sessions.values())
-        return (max_index + 1) % 6
+        return (max_index + 1) % 8
 
     def track_session(
         self,
@@ -185,8 +180,6 @@ class SessionManager:
         """
         if iterm_session_id in self.sessions:
             del self.sessions[iterm_session_id]
-            if iterm_session_id in self._detectors:
-                del self._detectors[iterm_session_id]
             self._save_state()
             return True
         return False
@@ -274,50 +267,6 @@ class SessionManager:
             List of all tracked sessions.
         """
         return list(self.sessions.values())
-
-    def get_sessions_needing_notification(self) -> List[TrackedSession]:
-        """
-        Get sessions that need to send a notification.
-
-        Returns:
-            List of sessions waiting for input that haven't been notified recently.
-        """
-        now = datetime.now()
-        needing_notification = []
-
-        for session in self.sessions.values():
-            # Only notify for WAITING_INPUT state
-            if session.current_state != ClaudeState.WAITING_INPUT:
-                continue
-
-            # Check cooldown
-            if session.notification_cooldown_until:
-                if now < session.notification_cooldown_until:
-                    continue
-
-            # Check if we should send a reminder
-            if session.last_notification:
-                time_since = now - session.last_notification
-                if time_since < self.NOTIFICATION_REMINDER:
-                    continue
-
-            needing_notification.append(session)
-
-        return needing_notification
-
-    def mark_notified(self, iterm_session_id: str) -> None:
-        """
-        Mark a session as having been notified.
-
-        Args:
-            iterm_session_id: The iTerm2 session ID.
-        """
-        if iterm_session_id in self.sessions:
-            now = datetime.now()
-            session = self.sessions[iterm_session_id]
-            session.last_notification = now
-            session.notification_cooldown_until = now + self.NOTIFICATION_COOLDOWN
-            self._save_state()
 
     def get_status_summary(self) -> Dict[str, any]:
         """

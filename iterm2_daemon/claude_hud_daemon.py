@@ -35,34 +35,6 @@ from window_manager import WindowManager
 from socket_listener import SocketListener, SessionMapper
 
 
-# Project color palette - distinct hues for up to 6 projects (background)
-PROJECT_COLORS = [
-    "1e3a5f",  # Navy blue
-    "4a1942",  # Purple
-    "0d4f4f",  # Teal
-    "5c3d2e",  # Brown
-    "2d4a3e",  # Forest green
-    "4a3f5c",  # Indigo
-]
-
-# Badge colors by state (RGB 0-1 scale)
-BADGE_COLORS = {
-    ClaudeState.IDLE: (0.42, 0.45, 0.50, 0.8),          # Gray #6b7280
-    ClaudeState.WORKING: (0.23, 0.51, 0.96, 0.8),       # Blue #3b82f6
-    ClaudeState.WAITING_INPUT: (0.98, 0.75, 0.14, 0.9), # Amber #fbbf24
-    ClaudeState.DONE: (0.13, 0.77, 0.37, 0.8),          # Green #22c55e
-    ClaudeState.ERROR: (0.94, 0.27, 0.27, 0.8),         # Red #ef4444
-}
-
-ICONS = {
-    ClaudeState.WORKING: "\u2699",       # Gear
-    ClaudeState.WAITING_INPUT: "\u23F3", # Hourglass
-    ClaudeState.DONE: "\u2713",          # Check
-    ClaudeState.ERROR: "\u2717",         # X
-    ClaudeState.IDLE: "\u25CB",          # Circle
-}
-
-
 class ClaudeHUDDaemon:
     """Main daemon for monitoring Claude Code sessions."""
 
@@ -119,7 +91,6 @@ class ClaudeHUDDaemon:
             try:
                 for session in self.session_manager.get_all_sessions():
                     await self._update_session_state(session)
-                    await self._check_notification(session)
             except Exception as e:
                 print(f"Error in monitor loop: {e}")
 
@@ -293,10 +264,6 @@ class ClaudeHUDDaemon:
                 tracked.original_bg_color,
             )
 
-            # Check notification for WAITING_INPUT
-            if state == ClaudeState.WAITING_INPUT:
-                await self._send_notification(tracked)
-
     async def _update_session_state(self, tracked: TrackedSession) -> None:
         """
         Update the state of a tracked session.
@@ -440,13 +407,6 @@ class ClaudeHUDDaemon:
             print(f"AppleScript error: {e}")
             return False
 
-    def _hex_to_applescript_rgb(self, hex_color: str) -> str:
-        """Convert hex color to AppleScript RGB format {r, g, b}."""
-        r = int(hex_color[0:2], 16) * 257  # Scale 0-255 to 0-65535
-        g = int(hex_color[2:4], 16) * 257
-        b = int(hex_color[4:6], 16) * 257
-        return f"{{{r}, {g}, {b}}}"
-
     def _get_session_background_color(self, session_id: str) -> Optional[str]:
         """Query the current background color of a session via AppleScript.
 
@@ -529,39 +489,6 @@ class ClaudeHUDDaemon:
 
         except Exception as e:
             print(f"Error updating visual feedback: {e}")
-
-    async def _check_notification(self, tracked: TrackedSession) -> None:
-        """
-        Check if a session needs a notification and send it.
-
-        Args:
-            tracked: The tracked session.
-        """
-        # Check if this session needs notification
-        sessions_needing = self.session_manager.get_sessions_needing_notification()
-
-        for session in sessions_needing:
-            if session.iterm_session_id == tracked.iterm_session_id:
-                await self._send_notification(session)
-                self.session_manager.mark_notified(session.iterm_session_id)
-
-    async def _send_notification(self, tracked: TrackedSession) -> None:
-        """
-        Send a macOS notification for a session.
-
-        Args:
-            tracked: The tracked session needing notification.
-        """
-        try:
-            # Send macOS system notification
-            subprocess.run([
-                'osascript', '-e',
-                f'display notification "{tracked.project_name} needs input" '
-                f'with title "Claude HUD" sound name "Glass"'
-            ], capture_output=True)
-
-        except Exception as e:
-            print(f"Error sending notification: {e}")
 
     async def _cleanup_sessions(self) -> None:
         """Clean up sessions that have been closed."""

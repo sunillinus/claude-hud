@@ -85,7 +85,7 @@ echo -e "  ${GREEN}✓${NC} Dynamic Profile installed"
 
 # Copy Python daemon
 echo -e "${YELLOW}Installing Python daemon...${NC}"
-cp "$SCRIPT_DIR/scripts/"*.py "$ITERM_SCRIPTS_DIR/"
+cp "$SCRIPT_DIR/iterm2_daemon/"*.py "$ITERM_SCRIPTS_DIR/"
 echo -e "  ${GREEN}✓${NC} Python daemon installed"
 
 # Copy and make CLI tools executable
@@ -221,8 +221,8 @@ echo ""
 echo "  # Multi-pane grid (auto-detects)"
 echo "  hud ~/api ~/web ~/db"
 echo ""
-echo "  # Named window"
-echo "  hud --name \"Work\" ~/api ~/web"
+echo "  # Empty panes"
+echo "  hud 4"
 echo ""
 echo "  # Check status"
 echo "  hud-status"

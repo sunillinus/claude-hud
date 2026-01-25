@@ -126,13 +126,36 @@ The grid arranges panes as follows:
 | 7 | `[1][2][3][7]` / `[4][5][6]` - 4th column full height |
 | 8 | `[1][2][3][7]` / `[4][5][6][8]` - 4x2 grid |
 
-## File Locations
+## Project Structure
 
-| Component | Location |
-|-----------|----------|
+```
+claude-hud/
+├── bin/
+│   ├── claude-hud          # Main CLI - launches grid, sets colors
+│   ├── hud                  # Symlink to claude-hud
+│   └── hud-status           # Show status of all sessions
+├── hooks/
+│   └── state-reporter.sh    # Claude Code hook - reports state changes
+├── iterm2_daemon/           # iTerm2 Python daemon (single process)
+│   ├── claude_hud_daemon.py # Entry point - runs in iTerm2 AutoLaunch
+│   ├── session_manager.py   # Tracks sessions and colors
+│   ├── state_detector.py    # Detects Claude state from screen
+│   ├── socket_listener.py   # Receives hook notifications
+│   └── window_manager.py    # Tracks named windows
+├── profiles/
+│   └── ClaudeHUD.json       # iTerm2 Dynamic Profile
+├── install.sh
+└── uninstall.sh
+```
+
+## Installed Locations
+
+| Component | Installed To |
+|-----------|--------------|
 | Dynamic Profile | `~/Library/Application Support/iTerm2/DynamicProfiles/ClaudeHUD.json` |
 | Python Daemon | `~/Library/Application Support/iTerm2/Scripts/AutoLaunch/` |
 | CLI Tools | `~/.local/bin/` |
+| Hook Script | `~/.claude-hud/hooks/` |
 | State Files | `~/.claude-hud/` |
 
 ## Uninstallation

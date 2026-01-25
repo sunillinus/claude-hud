@@ -142,7 +142,7 @@ claude-hud/
 │   ├── state_detector.py    # Detects Claude state from screen
 │   ├── socket_listener.py   # Receives hook notifications
 │   └── window_manager.py    # Tracks named windows
-├── profiles/
+├── iterm2_profiles/
 │   └── ClaudeHUD.json       # iTerm2 Dynamic Profile
 ├── install.sh
 └── uninstall.sh

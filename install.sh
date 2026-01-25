@@ -80,7 +80,7 @@ echo ""
 
 # Copy Dynamic Profile
 echo -e "${YELLOW}Installing iTerm2 Dynamic Profile...${NC}"
-cp "$SCRIPT_DIR/profiles/ClaudeHUD.json" "$ITERM_PROFILES_DIR/"
+cp "$SCRIPT_DIR/iterm2_profiles/ClaudeHUD.json" "$ITERM_PROFILES_DIR/"
 echo -e "  ${GREEN}✓${NC} Dynamic Profile installed"
 
 # Copy Python daemon

@@ -69,6 +69,7 @@ PYTHON_SCRIPTS=(
     "claude_hud_daemon.py"
     "state_detector.py"
     "session_manager.py"
+    "socket_listener.py"
     "window_manager.py"
 )
 
@@ -80,7 +81,7 @@ for script in "${PYTHON_SCRIPTS[@]}"; do
 done
 
 # Remove CLI tools
-CLI_TOOLS=("claude-hud" "claude-hud-grid" "hud-status")
+CLI_TOOLS=("claude-hud" "hud" "hud-status")
 
 for tool in "${CLI_TOOLS[@]}"; do
     if [ -f "$BIN_DIR/$tool" ]; then

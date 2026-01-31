@@ -12,9 +12,20 @@ A heads-up display for monitoring multiple Claude Code sessions in iTerm2.
 ## Requirements
 
 - macOS
-- iTerm2 3.4+
+- [iTerm2](https://iterm2.com/) 3.4+
 - Python 3.8+
-- Claude Code CLI
+- [Claude Code CLI](https://claude.ai/code)
+- git (for installation)
+
+### Python Dependencies
+
+The installer automatically installs:
+- `iterm2` - Python package for iTerm2 API integration
+
+```bash
+# Installed automatically, or manually with:
+pip3 install iterm2
+```
 
 ## Installation
 

@@ -106,7 +106,7 @@ get_project_color() {
             4) echo "{35466, 10280, 22616}" ;;  # Ruby Star
             5) echo "{11822, 22616, 37008}" ;;  # Navy
             6) echo "{27499, 20560, 39835}" ;;  # Violet
-            7) echo "{14906, 27499, 35723}" ;;  # Steel Blue
+            7) echo "{9509, 34181, 9509}" ;;     # Signal Green
             *) echo "{19018, 5397, 24672}" ;;   # Default to Ultra Violet
         esac
     fi

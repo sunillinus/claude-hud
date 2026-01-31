@@ -280,18 +280,17 @@ run_single_session() {
     local badge=$(truncate_badge "$name")
     local color=$(get_project_color 0)
 
-    osascript <<EOF
-tell application "iTerm2"
-    set newWindow to (create window with profile "$PROFILE_NAME")
+    osascript -e "
+tell application \"iTerm2\"
+    set newWindow to (create window with profile \"$PROFILE_NAME\")
     set bounds of newWindow to {100, 100, 1500, 1000}
     tell current session of newWindow
-        write text "cd '$project' && echo -ne '\\033]0;○ $name\\007' && claude $CLAUDE_ARGS"
-        set name to "○ $name"
+        write text \"cd '$project' && claude $CLAUDE_ARGS\"
+        set name to \"○ $name\"
         set background color to $color
-        set variable named "user.badge" to "$badge"
+        set variable named \"user.badge\" to \"$badge\"
     end tell
-end tell
-EOF
+end tell"
     echo "Started Claude HUD: $name"
 }
 
@@ -318,7 +317,7 @@ HEADER
     local color0=$(get_project_color 0)
     SCRIPT+="
         tell current session
-            write text \"cd '${projects[0]}' && echo -ne '\\\\033]0;○ ${names[0]}\\\\007' && claude $CLAUDE_ARGS\"
+            write text \"cd '${projects[0]}' && claude $CLAUDE_ARGS\"
             set name to \"○ ${names[0]}\"
             set background color to $color0
             set variable named \"user.badge\" to \"$badge0\"
@@ -333,7 +332,7 @@ HEADER
             set session2 to (split vertically with profile \"$PROFILE_NAME\")
         end tell
         tell session2
-            write text \"cd '${projects[1]}' && echo -ne '\\\\033]0;○ ${names[1]}\\\\007' && claude $CLAUDE_ARGS\"
+            write text \"cd '${projects[1]}' && claude $CLAUDE_ARGS\"
             set name to \"○ ${names[1]}\"
             set background color to $color1
             set variable named \"user.badge\" to \"$badge1\"
@@ -349,7 +348,7 @@ HEADER
             set session3 to (split vertically with profile \"$PROFILE_NAME\")
         end tell
         tell session3
-            write text \"cd '${projects[2]}' && echo -ne '\\\\033]0;○ ${names[2]}\\\\007' && claude $CLAUDE_ARGS\"
+            write text \"cd '${projects[2]}' && claude $CLAUDE_ARGS\"
             set name to \"○ ${names[2]}\"
             set background color to $color2
             set variable named \"user.badge\" to \"$badge2\"
@@ -365,7 +364,7 @@ HEADER
             set session7 to (split vertically with profile \"$PROFILE_NAME\")
         end tell
         tell session7
-            write text \"cd '${projects[6]}' && echo -ne '\\\\033]0;○ ${names[6]}\\\\007' && claude $CLAUDE_ARGS\"
+            write text \"cd '${projects[6]}' && claude $CLAUDE_ARGS\"
             set name to \"○ ${names[6]}\"
             set background color to $color6
             set variable named \"user.badge\" to \"$badge6\"
@@ -381,7 +380,7 @@ HEADER
             set session4 to (split horizontally with profile \"$PROFILE_NAME\")
         end tell
         tell session4
-            write text \"cd '${projects[3]}' && echo -ne '\\\\033]0;○ ${names[3]}\\\\007' && claude $CLAUDE_ARGS\"
+            write text \"cd '${projects[3]}' && claude $CLAUDE_ARGS\"
             set name to \"○ ${names[3]}\"
             set background color to $color3
             set variable named \"user.badge\" to \"$badge3\"
@@ -397,7 +396,7 @@ HEADER
             set session5 to (split horizontally with profile \"$PROFILE_NAME\")
         end tell
         tell session5
-            write text \"cd '${projects[4]}' && echo -ne '\\\\033]0;○ ${names[4]}\\\\007' && claude $CLAUDE_ARGS\"
+            write text \"cd '${projects[4]}' && claude $CLAUDE_ARGS\"
             set name to \"○ ${names[4]}\"
             set background color to $color4
             set variable named \"user.badge\" to \"$badge4\"
@@ -413,7 +412,7 @@ HEADER
             set session6 to (split horizontally with profile \"$PROFILE_NAME\")
         end tell
         tell session6
-            write text \"cd '${projects[5]}' && echo -ne '\\\\033]0;○ ${names[5]}\\\\007' && claude $CLAUDE_ARGS\"
+            write text \"cd '${projects[5]}' && claude $CLAUDE_ARGS\"
             set name to \"○ ${names[5]}\"
             set background color to $color5
             set variable named \"user.badge\" to \"$badge5\"
@@ -429,7 +428,7 @@ HEADER
             set session8 to (split horizontally with profile \"$PROFILE_NAME\")
         end tell
         tell session8
-            write text \"cd '${projects[7]}' && echo -ne '\\\\033]0;○ ${names[7]}\\\\007' && claude $CLAUDE_ARGS\"
+            write text \"cd '${projects[7]}' && claude $CLAUDE_ARGS\"
             set name to \"○ ${names[7]}\"
             set background color to $color7
             set variable named \"user.badge\" to \"$badge7\"

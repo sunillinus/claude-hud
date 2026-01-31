@@ -97,17 +97,17 @@ get_project_color() {
             *) echo "{5140, 6168, 8224}" ;;    # Default
         esac
     else
-        # Multi-color: distinct hues per project
+        # Multi-color: Porsche PTS inspired palette
         case $index in
-            0) echo "{7710, 14906, 24415}" ;;   # Navy blue
-            1) echo "{19018, 6425, 16962}" ;;   # Purple
-            2) echo "{3341, 20303, 20303}" ;;   # Teal
-            3) echo "{23644, 15677, 11822}" ;;  # Brown
-            4) echo "{11565, 19018, 15934}" ;;  # Forest green
-            5) echo "{19018, 16191, 23644}" ;;  # Indigo
-            6) echo "{20303, 10280, 10280}" ;;  # Burgundy
-            7) echo "{10280, 18247, 20303}" ;;  # Steel blue
-            *) echo "{7710, 14906, 24415}" ;;   # Default to navy
+            0) echo "{19018, 5397, 24672}" ;;   # Ultra Violet
+            1) echo "{0, 27242, 35466}" ;;      # Mexico Blue
+            2) echo "{13621, 28784, 12336}" ;;  # Viper Green
+            3) echo "{45232, 24672, 9509}" ;;   # Gulf Orange
+            4) echo "{35466, 10280, 22616}" ;;  # Ruby Star
+            5) echo "{11822, 22616, 37008}" ;;  # Navy
+            6) echo "{27499, 20560, 39835}" ;;  # Violet
+            7) echo "{14906, 27499, 35723}" ;;  # Steel Blue
+            *) echo "{19018, 5397, 24672}" ;;   # Default to Ultra Violet
         esac
     fi
 }

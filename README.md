@@ -9,7 +9,22 @@ A heads-up display for monitoring multiple Claude Code sessions in iTerm2.
 - **Multi-pane grid**: Run 2-8 Claude Code sessions in a grid layout
 - **Simple command**: Just `hud` to start sessions
 
+## Requirements
+
+- macOS
+- iTerm2 3.4+
+- Python 3.8+
+- Claude Code CLI
+
 ## Installation
+
+### Quick Install (one-liner)
+
+```bash
+curl -sSL https://raw.githubusercontent.com/sunillinus/claude-hud/main/install-remote.sh | bash
+```
+
+### Manual Install
 
 ```bash
 git clone https://github.com/sunillinus/claude-hud.git
@@ -17,21 +32,37 @@ cd claude-hud
 ./install.sh
 ```
 
-### Post-installation
+## Post-Installation Setup (Required)
 
-1. **Enable iTerm2 Python API**:
-   - Open iTerm2 Preferences (Cmd+,)
-   - Go to General > Magic
-   - Check "Enable Python API"
+After installation, you must complete these steps:
 
-2. **Restart iTerm2** to activate the daemon
+### 1. Enable iTerm2 Python API
 
-### Requirements
+1. Open iTerm2
+2. Go to **Preferences** (`Cmd + ,`)
+3. Navigate to **General > Magic**
+4. Check **"Enable Python API"**
 
-- macOS
-- iTerm2 3.4+
-- Python 3.8+
-- Claude Code CLI
+### 2. Restart iTerm2
+
+Completely quit iTerm2 (`Cmd + Q`) and reopen it. This activates the background daemon that monitors your Claude sessions.
+
+### 3. Verify Installation
+
+Open a new terminal and run:
+
+```bash
+hud --help
+```
+
+You should see the usage information. If you get "command not found", you may need to:
+
+```bash
+# Add ~/.local/bin to your PATH (if not already done)
+source ~/.zshrc   # or ~/.bashrc
+
+# Or open a new terminal window
+```
 
 ## Usage
 
@@ -144,7 +175,8 @@ claude-hud/
 │   └── window_manager.py    # Tracks named windows
 ├── iterm2_profiles/
 │   └── ClaudeHUD.json       # iTerm2 Dynamic Profile
-├── install.sh
+├── install.sh               # Local installer (after cloning)
+├── install-remote.sh        # Remote installer (curl one-liner)
 └── uninstall.sh
 ```
 

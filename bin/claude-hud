@@ -19,6 +19,9 @@ STATE_DIR="$HOME/.claude-hud"
 PROJECTS=()
 CLAUDE_ARGS=""
 MONO_MODE=false
+WORKTREE_MODE=false
+WORKTREE_LIST_MODE=false
+WORKTREE_BRANCHES=()
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -32,11 +35,27 @@ while [[ $# -gt 0 ]]; do
             MONO_MODE=true
             shift
             ;;
+        --worktree|-w)
+            WORKTREE_MODE=true
+            shift
+            while [[ $# -gt 0 && "$1" != --* ]]; do
+                WORKTREE_BRANCHES+=("$1")
+                shift
+            done
+            ;;
+        --worktrees)
+            WORKTREE_LIST_MODE=true
+            shift
+            ;;
         --help|-h)
             echo "Usage: hud <project> [project2] ... [-- CLAUDE_ARGS]"
             echo "       hud <number>                        # Create empty panes"
+            echo "       hud -w <branch> [branch2] ...       # Worktree sessions"
+            echo "       hud --worktrees                     # Interactive worktree picker"
             echo ""
             echo "Options:"
+            echo "  --worktree, -w       Use git worktrees for branches"
+            echo "  --worktrees          Interactive worktree picker (uses fzf if available)"
             echo "  --mono, -m           Use monochrome color scheme"
             echo "  --                   Pass remaining args to claude"
             echo "  --help, -h           Show this help"
@@ -49,6 +68,12 @@ while [[ $# -gt 0 ]]; do
             echo "  hud ~/project -- -c                  # Continue session"
             echo "  hud ~/project -- --model opus        # Use opus model"
             echo "  hud ~/project -- -r                  # Resume picker"
+            echo ""
+            echo "Worktree examples:"
+            echo "  hud -w feature/auth                  # Single worktree session"
+            echo "  hud -w main feature/auth bugfix/123  # Multi-pane worktrees"
+            echo "  hud --worktrees                      # Pick worktrees interactively"
+            echo "  hud -w feature/auth -- -c            # Worktree with claude args"
             exit 0
             ;;
         -*)
@@ -71,11 +96,12 @@ if [ ${#PROJECTS[@]} -eq 1 ] && [[ "${PROJECTS[0]}" =~ ^[1-8]$ ]]; then
     EMPTY_PANES="${PROJECTS[0]}"
 fi
 
-# Validate input
-if [ ${#PROJECTS[@]} -lt 1 ]; then
+# Validate input (skip if worktree mode will handle it)
+if [ "$WORKTREE_MODE" = false ] && [ "$WORKTREE_LIST_MODE" = false ] && [ ${#PROJECTS[@]} -lt 1 ]; then
     echo "Error: At least one project path or pane count required"
     echo "Usage: hud [OPTIONS] <project> [project2] ..."
     echo "       hud <number>  # Create empty panes (1-8)"
+    echo "       hud -w <branch>  # Worktree mode"
     exit 1
 fi
 
@@ -119,6 +145,189 @@ truncate_badge() {
         echo "${name:0:12}..."
     else
         echo "$name"
+    fi
+}
+
+#
+# GIT WORKTREE FUNCTIONS
+#
+
+# Check if current directory is a git repository
+check_git_repo() {
+    if ! git rev-parse --git-dir >/dev/null 2>&1; then
+        echo "Error: Not a git repository"
+        exit 1
+    fi
+}
+
+# Get the main worktree path (the primary repository)
+get_main_worktree() {
+    git worktree list --porcelain | grep '^worktree ' | head -1 | cut -d' ' -f2-
+}
+
+# Get or create the worktrees container directory
+get_worktrees_dir() {
+    local main_worktree
+    main_worktree=$(get_main_worktree)
+    local repo_name
+    repo_name=$(basename "$main_worktree")
+    local parent_dir
+    parent_dir=$(dirname "$main_worktree")
+    local worktrees_dir="${parent_dir}/${repo_name}-worktrees"
+
+    # Create container if it doesn't exist
+    if [ ! -d "$worktrees_dir" ]; then
+        mkdir -p "$worktrees_dir"
+    fi
+
+    echo "$worktrees_dir"
+}
+
+# Convert branch name to directory name (feature/auth -> feature-auth)
+branch_to_dirname() {
+    local branch="$1"
+    echo "$branch" | tr '/' '-'
+}
+
+# Ensure worktree exists for branch, return its path
+# If branch doesn't exist, creates it from current HEAD
+ensure_worktree() {
+    local branch="$1"
+    local worktrees_dir
+    worktrees_dir=$(get_worktrees_dir)
+    local dirname
+    dirname=$(branch_to_dirname "$branch")
+    local worktree_path="${worktrees_dir}/${dirname}"
+
+    # Check if worktree already exists
+    if [ -d "$worktree_path" ]; then
+        echo "$worktree_path"
+        return 0
+    fi
+
+    # Check if branch exists locally
+    if git show-ref --verify --quiet "refs/heads/$branch"; then
+        # Branch exists locally, create worktree
+        git worktree add "$worktree_path" "$branch" 2>/dev/null || {
+            echo "Error: Failed to create worktree for branch '$branch'" >&2
+            return 1
+        }
+    # Check if branch exists on remote
+    elif git ls-remote --heads origin "$branch" 2>/dev/null | grep -q "$branch"; then
+        # Fetch and create worktree
+        git fetch origin "$branch:$branch" 2>/dev/null || {
+            echo "Error: Cannot fetch branch '$branch' from remote" >&2
+            return 1
+        }
+        git worktree add "$worktree_path" "$branch" 2>/dev/null || {
+            echo "Error: Failed to create worktree for branch '$branch'" >&2
+            return 1
+        }
+    else
+        # Branch doesn't exist anywhere, create new branch from HEAD
+        echo "Creating new branch '$branch' from HEAD" >&2
+        git worktree add -b "$branch" "$worktree_path" HEAD 2>/dev/null || {
+            echo "Error: Failed to create new branch '$branch'" >&2
+            return 1
+        }
+    fi
+
+    echo "$worktree_path"
+}
+
+# Interactive worktree picker using fzf or numbered list fallback
+pick_worktrees() {
+    local branches=()
+    local worktrees=()
+
+    # Get all local branches
+    while IFS= read -r branch; do
+        branches+=("$branch")
+    done < <(git branch --format='%(refname:short)' | sort)
+
+    # Also get existing worktrees
+    while IFS= read -r line; do
+        if [[ "$line" =~ ^worktree\ (.+) ]]; then
+            worktrees+=("${BASH_REMATCH[1]}")
+        fi
+    done < <(git worktree list --porcelain)
+
+    if [ ${#branches[@]} -eq 0 ]; then
+        echo "Error: No branches found" >&2
+        return 1
+    fi
+
+    local selected=()
+
+    # Check if fzf is available
+    if command -v fzf >/dev/null 2>&1; then
+        # Use fzf for selection
+        local fzf_result
+        fzf_result=$(printf '%s\n' "${branches[@]}" | fzf --multi --prompt="Select branches (Tab to multi-select): " --header="Press Tab to select multiple, Enter to confirm")
+
+        if [ -z "$fzf_result" ]; then
+            echo "No branches selected" >&2
+            return 1
+        fi
+
+        while IFS= read -r branch; do
+            selected+=("$branch")
+        done <<< "$fzf_result"
+    else
+        # Fallback to numbered list
+        echo "Available branches:" >&2
+        local i=1
+        for branch in "${branches[@]}"; do
+            # Mark if worktree exists
+            local mark=""
+            for wt in "${worktrees[@]}"; do
+                if [[ "$wt" == *"/$(branch_to_dirname "$branch")" ]]; then
+                    mark=" [worktree exists]"
+                    break
+                fi
+            done
+            echo "  $i) $branch$mark" >&2
+            ((i++))
+        done
+
+        echo "" >&2
+        echo "Enter branch numbers (space-separated), or 'q' to quit:" >&2
+        read -r selection
+
+        if [ "$selection" = "q" ]; then
+            return 1
+        fi
+
+        for num in $selection; do
+            if [[ "$num" =~ ^[0-9]+$ ]] && [ "$num" -ge 1 ] && [ "$num" -le ${#branches[@]} ]; then
+                selected+=("${branches[$((num-1))]}")
+            fi
+        done
+
+        if [ ${#selected[@]} -eq 0 ]; then
+            echo "No valid branches selected" >&2
+            return 1
+        fi
+    fi
+
+    printf '%s\n' "${selected[@]}"
+}
+
+# Get branch name for badge display from worktree path
+get_badge_name() {
+    local path="$1"
+    local dirname
+    dirname=$(basename "$path")
+
+    # Check if this is in a worktrees directory
+    local parent
+    parent=$(dirname "$path")
+    if [[ "$parent" == *-worktrees ]]; then
+        # Return the dirname which is the branch name (with hyphens)
+        echo "$dirname"
+    else
+        # Regular project, use basename
+        echo "$dirname"
     fi
 }
 
@@ -251,6 +460,50 @@ end tell"
 if [ $EMPTY_PANES -gt 0 ]; then
     run_empty_grid $EMPTY_PANES
     exit 0
+fi
+
+#
+# WORKTREE MODE HANDLERS
+#
+
+# Handle --worktrees (interactive picker)
+if [ "$WORKTREE_LIST_MODE" = true ]; then
+    check_git_repo
+
+    # Get selected branches from picker
+    selected_branches=()
+    while IFS= read -r branch; do
+        [ -n "$branch" ] && selected_branches+=("$branch")
+    done < <(pick_worktrees)
+
+    if [ ${#selected_branches[@]} -eq 0 ]; then
+        echo "No branches selected"
+        exit 1
+    fi
+
+    # Convert branches to PROJECTS array
+    PROJECTS=()
+    for branch in "${selected_branches[@]}"; do
+        worktree_path=$(ensure_worktree "$branch") || exit 1
+        PROJECTS+=("$worktree_path")
+    done
+fi
+
+# Handle -w <branches>
+if [ "$WORKTREE_MODE" = true ]; then
+    check_git_repo
+
+    if [ ${#WORKTREE_BRANCHES[@]} -eq 0 ]; then
+        echo "Error: -w requires at least one branch name"
+        exit 1
+    fi
+
+    # Convert branches to PROJECTS array
+    PROJECTS=()
+    for branch in "${WORKTREE_BRANCHES[@]}"; do
+        worktree_path=$(ensure_worktree "$branch") || exit 1
+        PROJECTS+=("$worktree_path")
+    done
 fi
 
 # Resolve all paths to absolute

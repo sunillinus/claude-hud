@@ -15,7 +15,11 @@ A heads-up display for monitoring multiple Claude Code sessions in iTerm2.
 - [iTerm2](https://iterm2.com/) 3.4+
 - Python 3.8+
 - [Claude Code CLI](https://claude.ai/code)
-- git (for installation)
+- git (for installation and worktree features)
+
+### Optional Dependencies
+
+- [fzf](https://github.com/junegunn/fzf) - Enhanced interactive worktree picker (`hud --worktrees`)
 
 ### Python Dependencies
 
@@ -107,13 +111,49 @@ hud ~/project -- -r                  # Open resume picker
 hud ~/project -- --model sonnet -c   # Continue with sonnet
 ```
 
+### Git Worktrees
+
+Spin up Claude sessions for multiple branches in parallel using git worktrees:
+
+```bash
+# Single worktree session
+hud -w feature/auth
+
+# Multi-pane worktrees
+hud -w main feature/auth bugfix/123
+
+# Interactive worktree picker (uses fzf if available)
+hud --worktrees
+
+# Combined with claude args
+hud -w feature/auth -- -c
+```
+
+Worktrees are automatically created in a sibling directory:
+```
+~/code/
+  my-project/                    # Main repository
+  my-project-worktrees/          # Auto-created container
+    feature-auth/                # Branch: feature/auth (slashes → hyphens)
+    bugfix-123/                  # Branch: bugfix/123
+```
+
+**Branch resolution:**
+- If the branch exists locally → uses it
+- If the branch exists on remote → fetches and uses it
+- If the branch doesn't exist → creates it from current HEAD
+
 ### All options
 
 ```
 Usage: hud <project> [project2] ... [-- CLAUDE_ARGS]
        hud <number>                        # Create empty panes (1-8)
+       hud -w <branch> [branch2] ...       # Worktree sessions
+       hud --worktrees                     # Interactive worktree picker
 
 Options:
+  --worktree, -w       Use git worktrees for branches
+  --worktrees          Interactive worktree picker (uses fzf if available)
   --mono, -m           Use monochrome color scheme
   --                   Pass remaining args to claude
   --help, -h           Show this help
